@@ -5,7 +5,7 @@
 \graphicspath{ {images/} }
 \newcommand{\Mod}[1]{\ (\mathrm{mod}\ #1)}
 
-\title{Zerocaf: Short ring signatures with Bulletproofs}
+\title{Zerocaf: Highly secure efficient scalar operations for Discrete log based proof systems}
 \author{
   Carlos Perez\\
   Dusk Foundation\footnote{https://dusk.network/}\\
@@ -15,7 +15,7 @@
   Dusk Foundation\\
   \texttt{luke@dusk.network}
 }
-\date{April 2019}
+\date{October 2019}
 
 \begin{document}
 
@@ -26,7 +26,7 @@
 \pagestyle{empty}
 
 \begin{abstract}
-Zerocaf is one of the cryptographic protocols built by, and implemented within, the Dusk Network, which uses zero-knowledge proofs to show the existence of a private key within one of many public keys. For this, there will be an elliptic curve, used for the key generation, defined over a Ristretto scalar field which enables the use of Ristretto in Bulletproofs while simultaneously abstracting the computationally intensive conversion within Rank-1 Constraint System from co-factor 8 scalar field into a co-factor 1 Ristretto field. This paper provides an explanation of the current curve development, as well as a contextual understanding of how this curve implementation acts as one of aspects within the Zerocaf protocol.
+Zerocaf is one of the cryptographic protocols built by, and implemented within, the Dusk Network, which uses zero-knowledge proofs to show the existence of a private key within one of many public keys. For this, there will be an elliptic curve, used for the key generation, defined over a Ristretto scalar field which enables the use of Ristretto in Bulletproofs while simultaneously abstracting the computationally intensive conversion within Rank-1 Constraint System from cofactor 8 scalar field into a cofactor 1 Ristretto field. This paper provides an explanation of the current curve development, as well as a contextual understanding of how this curve implementation acts as one of aspects within the Zerocaf protocol. 
 
 
 \end{abstract}
@@ -38,8 +38,70 @@ Zerocaf is one of the cryptographic protocols built by, and implemented within, 
 \newpage
 
 \section{Introduction}
-The construction and use of elliptic curves is paramount to many cryptographic protocols. Elliptic curves are among the fastest performing primitives where the discrete logarithm problem is hard, which is why they are regarded dominant in the field of cryptography. As the field of cryptography advances, elliptic curves have been proved to be unparalleled in their use as a cryptographic system at which speed and security are two of the most outstanding features. Zerocaf uses elliptic curves for both private and public key generation, these keys are used in conjunction with zero-knowledge proofs to show how they relate to one another. By creating proofs which show a private key exists in one of many public keys, it is possible to perform cryptographic functions on just the private key, which requires significantly less computational effort but is applicable to all of the keys.  To understand the theory and some of the practical applications of elliptic curves and their operations in a stand alone context, or their workings with other cryptographic tools, it is important to familiarise with the difference in utility of various elliptic curves. From a greater understanding of these curves, many of the goals in this current project of Dusk will become apparent.  The curve implementation and the choice for certain novel methods can be seen holistically with all the aspects discussed in this paper and as part of a wider pragmatic solution to one of the aspects of the Dusk network, which is to perform elliptic curve cryptography inside of a circuit. \\
-All of the work associated, both current and future either is or will be written in Rust, as this is the language of the library that is being built.
+The construction and use of elliptic curves is paramount to many cryptographic protocols. Elliptic curves are among the fastest performing primitives where the discrete logarithm problem is hard, which is why they are regarded dominant in the field of cryptography. As the field of cryptography advances, elliptic curves have been proved to be unparalleled in their use as a cryptographic system at which speed and security are two of the most outstanding features. The implementation of elliptic curves within Zerocaf was designed such that it meets end goals of a larger protocol base. The use of elliptic curves is ultimately for both private and public key generation, these keys are used in conjunction with zero-knowledge proofs to show how they relate to one another. When outlining elliptic curve implementations, there are a multitude of features which are affected depending on design; often regarded as factors of opportunity cost which leads to compromise on critical features within Elliptic Curve Cryptography (ECC).\\\\  Elliptic curves have both a base field, which is the finite field in which they are defined; as well as a scalar field, which is associated with the number of points on the curve. Using discrete log based proof systems for general computation requires both an elliptic curve and an arithmetic circuit. These circuit, in these cases, is defined over the scalar field of the curve and encodes a relation between the input and outputs - this gives greater choice to the broadness of circuit operations, for example to encode an ECDH key exchange for the curve with bulletproofs as the argument. For this encoding to be performed, there must be an outermost curve which implements the proof and an inner curve - across which the proofs are defined. The inner curve, often called the Embedded curve, refers to a curve which has a quasi-construction inside of another curve. When constructing   \\\\
+
+As with all elliptic curves, their construction will strongly determine the outcomes of the protocols in which they are implemented. In addition to this, there can be a discrepancies in both the security and speed of cryptographic systems dependant on how they're implemented. For example, the fastest point addition laws for elliptic curves is for twisted Edwards curves, and for in circuit operations Montgomery curves. Whilst these curves models can provide some of the fastest and most simplistic operations, they do provide issues in security. However, neither Montgomery, nor Edwards curves deliver prime order groups in their implementations. They provide curves which have a cofactor which multiplies the prime subgroup to give the group order. The mismatch in desirability of prime order group and inability to implement one directly from the curve can be patched with unique tailored modifications, however, these fixes oft become perplexing to the non-implementors. Using curves which provide prime order groups, such are Weierstrass Curves, have slower formulae and are very difficult to implement in constant time. \\ 
+
+There exists multiple applicable cryptographic protocols to different elliptic curves, and often to different curves within one family of curves. Applying ad hoc corrections to redress the abstraction mismatches with individual protocols can be tedious, and lead to inefficient implementations of each curve model. As families of curves are connected to one another through curve mappings, also known as isogenies, then the properties of these mappings can be integrated with protocols to extend them to different curve models.
+
+
+
+
+\subsection{Implementation considerations}
+\\ \subsubsection{$Embedding$}
+The discrete log based proof is based on a defined outer curve but the in circuit operations are based on the field elements which are modulo the scalar field, then the construction of an embedded curve which has this as a base field make the operations considerably more efficient. This is defined in the following manner: Let $\varepsilon_{1}$ and $\varepsilon_{2}$ be elliptic curves. Where the prime sub-group order, or scalar field, of $\varepsilon_{1}$ is $r$; we define $\varepsilon_{2}$ over the base field $F_p$, where \#$F_p$ = $r$.
+This will allows us to make fast in circuit operations using $\varepsilon_{2}$, with  $\varepsilon_{1}$ as the 
+\subsubsection{$Security$}  Regarded by many as the most significant factor determining how elliptic curves should be implemented - we present the amalgamation of several different ECC techniques, tailored to a family of curves, in order to provide high security for the operations which use the curve. The most prominent of these techniques is cofactor compression. This is performed using the neoteric Ristretto[], which is an extension of Decaf, used to construct prime order groups from non prime order elliptic curves. Ristretto is applicable to Edwards[] curves with a cofactor of 4 or 8, where it handles the mismatch between the point on an Edwards curve and representative point of degrees up to and equalling the cofactor. \\\\
+ In theory, the difficulty of breaking cryptographic systems stems solely from the hardness of the mathematical problems on which they are based. However, this proves not to be the case in practical implementations because of side channel attacks, which target the implementation as medium of encoding the cryptography - to circumvent these attacks, the operations need to be performed in constant time. The use of Edwards curves results in a uniform implementation which better facilitates these constant time operations. The Edwards form of a curve is considered complete, as any two inputs, given as x and y, provide a correct result.   
+\subsubsection{$Speed$} To ensure that the operations remain amongst the fastest of the generic ECC operations, the Edwards form of the curve is used. This is because the Edwards forms of the curves provide the fastest known formulas, which can be accredited to extended twisted Edwards, introduced by Hysil et al, where auxiliary points are used with fewer field inversions. \\\\
+Curve models provide circumstantial speeds, where the environment in which the curve operations are being performed dictates which curve form is best to use. To capitalise on this, several implementations for given curve parameters ought to be defined. 
+\subsubsection{$Compatibility$} (isogenies/facility) ristretto - sig - scalar
+
+\section{Notation and Formulae} 
+\subsection{General notation}
+$Finite Field$: $F_p$ is the finite field where the $char$ \neq {2}\vee{3}\\\\
+$Curve forms$: \ $\varepsilon_{a,d}$; ${M}_{a,\frac{2-4d}{a}}$; $\jmath_{a^{2},a-{2d}}$\\\\
+$\varepsilon_{a,d}$ is a Edwards curve, given by the equation: $$ {a}x^2+y^2=1+{d}x^2y^2 $$ where {$d$} and {$ad$} are none square in $F$ and has no points at infinity. In this paper, the primary focus is upon twisted Edwards curves, where $a = -1$. The identity point of an Edwards curve, $\varepsilon$, where (X,Y) $\epsilon$ in $F_p$, is given encoded to (0,1). When Edwards points are expressed in Extended twisted coordinates, the identity encoding is given by (X : Y : Z : T) = (0 : 1 : 1 : 0).\\\\
+${M}_{a,\frac{2-4d}{a}}$ is a Montgomery curve, given by the equation: $$ y^2=x^3+Ax^2+Bx $$ A Montgomery curve is Birationally equivalent to an Edwards curve - a definition used for algebraic substitution -  where its point at of infinity is the identity point, denoted as (0 : 1 : 0).\\\\  
+$\jmath_{a^{2},a−2d}$ is a Jacobi curve, given by the equation: $$y
+^2 = {e}x^4 + 2Ax^2 + 1$$ A Jacobi curve, better known as a Jacobi quartic, is central to all curve models and to utilise this curve relationship we will only be using Jacobi curves where $e = {a}^2$, as such curves have a full 2-torsion point.\\\\
+$Torsion\ points$:\ An element [P] in  $G$ is a torsion point if there is a mapping of $M$, by means of multiplication, where $M$ \textbullet\ [P] = $0_{G}$. Torquing elements for a curve form a subgroup, $G$[$M$], where the order is divisible by ${M}^2$. The torsion subgroups for this curve family have order 1, 2 or 4.  \\\\ $Coset$: These are the elements g that exist in a group $G$, where the coset of the subgroup is $\mathbb{H} \subset \mathbb{G}$ that exist in H
+In an Abelian group G, the coset of a subgroup H ⊂ G with respect to
+an element g ∈ G is H + g := {h + g : h ∈ H}\\\\
+$Isogeny$: An isogeny, $\varphi$ , is a function which maps algebraic groups whilst preserving the group structure. This mapping must satisfy the properties of being surjective and having a finite kernel. The isogeny, in this paper, is used to transport an encoding between different curve models.\\\\
+$Arithmetic$ $circuits$\\\\
+$Cofactor compression$: The encoding of elliptic curves in this paper uses Ristretto, which allows for the implementation of prime order curves from non prime order curve groups.
+
+\subsection{Our contributions}
+\subsubsection{Elliptic curve}
+Here we present an elliptic curve, created for an safe and efficient implementation of bulletproofs; called Sonny. Sonny is defined as an embedded curve which the gives the input for the proofs and the discrete log based proof is implemented using the outer curve, Curve25519. \\\\
+
+\noindent\fbox{%
+    \parbox{\textwidth}{%
+    $$ Sonny  $$
+        \begin{itemize}
+    \item Curve equation in Twisted Edwards form: $$ ax^2+y^2=1-dx^2y^2 $$ 
+    \item $a= -1$
+    \item $d= -\frac{126296}{126297}$
+    \item $Basepoint: Y = \frac{3}{5}$\\
+    \item Montgomery form equivalent: $$ y^2=x^3+Ax^2+x $$
+    \item $A = 505186 $
+    \item $Basepoint: X = 4$\\
+    \item The curve group order, G, is $$ 2^{252}+115924404605461509904689566245241897752 $$      
+    \item The order of the scalar field, $r$, is $$ 2^{249}+15114490550575682688738086195780655237219 $$       \item The order of the base field, $p$, is  $$ 2^{252} + 27742317777372353535851937790883648493 $$
+    \item Cofactor: $$ h =\frac{G}{r} = 8$$
+    \item Weierstrass form equivalent: \\  $$y^2=x^3+ax+b $$
+    \item $a$ = 7237005577332262213973186563042994240857116359379907606001\\950828033483786813
+    \item $b$ = 445582015604702849664
+\end{itemize}
+    }%
+}\\\\
+
+
+\subsubsection{Implementation features}
+\item Ristretto 
+\ 
+
 \section{Set Inclusion}
 Set inclusion will be used to show that a private key is one of many public keys. The private and public keys are two generated values from a one way function which are used in a cryptographic system. In any such system, the public key is used for encryption whereas only the private key is used for decryption. A public key is classed as set element, where the set is all of the curve points generated by a base point. The use of set inclusion is to prove that the private key exists as one of many public keys. A set can qualify as a subset of the other set if and only if the elements of the former set are likewise present, yet not the sole elements of the latter set. In order to produce a set inclusion proof, the Prover $\mathcal{P}$ has to convince the Verifier $\mathcal{V}$ that a given set is a subset of another set.
 \subsection{Example}
@@ -81,23 +143,23 @@ Ristretto $[4]$ is a technique that constructs prime-order elliptic curve groups
 \hfill \break
 There are various advantages and disadvantages to having a co-factor larger than one, therefore a thorough analysis must be performed,  so that it is known whether or not co-factor manipulation is needed. For all curves, except for Hessian curves, the co-factor is divisible by 4. To become more useful to a broad spectrum of cryptography, Ristretto is apt for a large number of curves, which have a co-factor of 8 or 4. When the co-factor is greater than 1 multiple operations can be hindered. In the case of set inclusion, having a co-factor larger than one will hinder the curve operations, specifically relating to the scalar base operations. In reference to the need for subset proofs, the goal is obstructed where the co-factor is not compressed, which leads to non-injective behaviour between the groups. Non-injective functions in set mappings, which is a method to describe whether an element exists in another set or not, affects the operations in proving subsets exists within sets. \\\\
 For elliptic curves, any scalar multiplication is a 1 to 1 mapping if the group order is prime. Only in a prime-order group is a random scalar for the operation valid, and it must be in the range 1 to $q$-1. Whereas in a non prime-order group, the adding of a small element can lead to a small subgroup confinement attack$[6]$, which makes it possible to present the same result from different inputs. When implemented, Ristretto acts as a thin layer, which provides a protocol to construct a prime-order group.  \\\\
-To embed a curve into this prime field, the definition that an embedded curve L, is a curve whose base field is defined by the scalar field of another curve, M. In this case, the Sonny curve, which will be eluded to shortly, has a base field which is equal to the scalar field defined by Ristretto255. To visualise how this protocol is performed, when the curve is embedded into the Ristretto scalar field - two arbitrary Edwards points, $P$ and $Q$, may be represented as the equivalent Ristretto points in the Ristretto scalar field. This happens because the Edwards curve is defined over said field. As a method of creating equivalent points, is not dissimilar to how $X$, $Y$, and $Z$ projective coordinates can represent the same $P$ and $Q$ Edwards points for a given Edwards curve. The elements of the created prime-order group, ristretto255, are not curve points, they are simply represented by curve points. For computation understanding, it must be noted that not this prime-order group is not a subgroup of the curve and that there is an unequivocal distinction between the curve points and group elements. 
+To embed a curve into this prime field, the definition that an embedded curve L, is a curve whose base field is defined by the scalar field of another curve, M. In this case, the Doppio curve, which will be eluded to shortly, has a base field which is equal to the scalar field defined by Ristretto255. To visualise how this protocol is performed, when the curve is embedded into the Ristretto scalar field - two arbitrary Edwards points, $P$ and $Q$, may be represented as the equivalent Ristretto points in the Ristretto scalar field. This happens because the Edwards curve is defined over said field. As a method of creating equivalent points, is not dissimilar to how $X$, $Y$, and $Z$ projective coordinates can represent the same $P$ and $Q$ Edwards points for a given Edwards curve. The elements of the created prime-order group, ristretto255, are not curve points, they are simply represented by curve points. For computation understanding, it must be noted that not this prime-order group is not a subgroup of the curve and that there is an unequivocal distinction between the curve points and group elements. 
 \section{Equations}
 \subsection{Twisted Edwards and Montgomery Forms}
-In order for a selected elliptic align with the goals defined in this paper, it needs to be both twist secure and Ristretto-ready. The Sonny curve has been chosen for the reasons highlighted above. \\\\
+In order for a selected elliptic align with the goals defined in this paper, it needs to be both twist secure and Ristretto-ready. The Doppio curve has been chosen for the reasons highlighted above. \\\\
 Which is defined as follows: \\\\
 \noindent\fbox{%
     \parbox{\textwidth}{%
         \begin{itemize}
-    \item Curve equation $$ -x^2+y^2=1-\frac{86649}{86650}x^2y^2 $$ Which is Twisted Edwards and used to implement Ristretto255.
+    \item Curve equation $$ -x^2+y^2=1-\frac{126296}{126297}x^2y^2 $$ Which is Twisted Edwards and used to implement Ristretto255.
     \item $a= -1$
-    \item $d= \frac{86649}{86650}$
-    \item $Basepoint: Y = \frac{8}{9}$\\
-    \item Montgomery form equivalent: $$ y^2=x^3+346598x^2+x $$
-    \item $A = 346598 $
-    \item $Basepoint: X = 17$\\
-    \item The number of points on the curve, G, is $$ 2^{252}-121160309657751286123858757838224683208 $$      
-    \item The prime order of the subgroup, q, is $$ 2^{249}-15145038707218910765482344729778085401 $$       \item The prime order of the Ristretto scalar field, l, is  $$ 2^{252} + 27742317777372353535851937790883648493 $$
+    \item $d= \frac{126296}{126297}$
+    \item $Basepoint: Y = \frac{3}{5}$\\
+    \item Montgomery form equivalent: $$ y^2=x^3+505186x^2+x $$
+    \item $A = 505186 $
+    \item $Basepoint: X = 4$\\
+    \item The curve order, G, is $$ 2^{252}+115924404605461509904689566245241897752 $$      
+    \item Theorder of the subgroup, q, is $$ 2^{249}+15114490550575682688738086195780655237219 $$       \item The prime order of the Ristretto scalar field, l, is  $$ 2^{252} + 27742317777372353535851937790883648493 $$
     \item $Cofactor: h =\frac{G}{q} = 8$
 \end{itemize}.
     }%
@@ -109,8 +171,8 @@ Which is defined as follows: \\\\
     \parbox{\textwidth}{%
 \begin{itemize}
     \item Weierstrass form equivalent: \\  $$y^2=x^3+ax+b $$
-    \item $a$ = 2412335192444087404657728854347664746952372119793302535333\\983646055108025796
-    \item $b$ = 1340186218024493002587627141304258192751317844329612519629\\993998710484804961\\
+    \item $a$ = 7237005577332262213973186563042994240857116359379907606001\\950828033483786813
+    \item $b$ = 445582015604702849664
 \end{itemize}
     }%
 }\\\\
@@ -139,6 +201,9 @@ $$ 2^{252}+x = 0\mod p $$
 $$ 2^{252} = -x\mod p $$
 The integer $x$ is then used in the calculations for radix $2^{52}$, so that a different module can be achieved. \\\\
 From this point addition, many of the further operations are made elementary as they all work with the manipulation of points, in some mathematical relation.  
+\section{Future work}
+\section{Conclusion}
+\section{Acknowledgements}
 
 
 \newpage
